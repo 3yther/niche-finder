@@ -1,7 +1,7 @@
 import math
 import os
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 
 import bcrypt
 from dotenv import load_dotenv
@@ -60,7 +60,7 @@ init_db()
 
 def migrate_db():
     with get_db() as db:
-        for col_def in ("stripe_customer_id TEXT", "stripe_subscription_id TEXT"):
+        for col_def in ("stripe_customer_id TEXT", "stripe_subscription_id TEXT", "email_tips INTEGER NOT NULL DEFAULT 1"):
             try:
                 db.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
                 db.commit()
@@ -297,6 +297,162 @@ def analyse():
         "summary":    _summarise(opportunity),
         "top_videos": [v["title"] for v in videos[:3]],
     })
+
+
+# ── Account & settings routes ────────────────────────────────────────────────
+
+def _require_login():
+    uid = session.get("user_id")
+    if not uid:
+        return None, redirect(url_for("login"))
+    u = get_user_by_id(uid)
+    if not u:
+        session.clear()
+        return None, redirect(url_for("login"))
+    return u, None
+
+
+@app.route("/account")
+def account():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    billing_date = None
+    cancel_at_period_end = False
+
+    if user["plan"] == "pro" and user["stripe_subscription_id"]:
+        try:
+            sub = stripe.Subscription.retrieve(user["stripe_subscription_id"])
+            cancel_at_period_end = sub.cancel_at_period_end
+            dt = datetime.utcfromtimestamp(sub.current_period_end)
+            billing_date = f"{dt.day} {dt.strftime('%B %Y')}"
+        except stripe.StripeError:
+            pass
+
+    return render_template(
+        "account.html",
+        user=dict(user),
+        billing_date=billing_date,
+        cancel_at_period_end=cancel_at_period_end,
+    )
+
+
+@app.route("/cancel-subscription", methods=["POST"])
+def cancel_subscription():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    if not user["stripe_subscription_id"]:
+        flash("No active subscription found.", "error")
+        return redirect(url_for("account"))
+
+    try:
+        stripe.Subscription.modify(user["stripe_subscription_id"], cancel_at_period_end=True)
+        flash("Your subscription will cancel at the end of the billing period. You keep Pro access until then.", "success")
+    except stripe.StripeError as e:
+        flash(str(e), "error")
+
+    return redirect(url_for("account"))
+
+
+@app.route("/settings")
+def settings():
+    user, resp = _require_login()
+    if resp:
+        return resp
+    return render_template("settings.html", user=dict(user))
+
+
+@app.route("/settings/email", methods=["POST"])
+def settings_email():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    new_email = request.form.get("email", "").strip().lower()
+    if not new_email:
+        flash("Email address is required.", "error")
+        return redirect(url_for("settings"))
+
+    existing = get_user_by_email(new_email)
+    if existing and existing["id"] != user["id"]:
+        flash("That email address is already in use.", "error")
+        return redirect(url_for("settings"))
+
+    with get_db() as db:
+        db.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, user["id"]))
+        db.commit()
+
+    flash("Email address updated.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/password", methods=["POST"])
+def settings_password():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    current_pw = request.form.get("current_password", "")
+    new_pw     = request.form.get("new_password", "")
+
+    if not bcrypt.checkpw(current_pw.encode(), user["password"].encode()):
+        flash("Current password is incorrect.", "error")
+        return redirect(url_for("settings"))
+
+    if len(new_pw) < 8:
+        flash("New password must be at least 8 characters.", "error")
+        return redirect(url_for("settings"))
+
+    hashed = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+    with get_db() as db:
+        db.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user["id"]))
+        db.commit()
+
+    flash("Password updated successfully.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/notifications", methods=["POST"])
+def settings_notifications():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    email_tips = 1 if request.form.get("email_tips") else 0
+    with get_db() as db:
+        db.execute("UPDATE users SET email_tips = ? WHERE id = ?", (email_tips, user["id"]))
+        db.commit()
+
+    flash("Notification preferences saved.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/delete", methods=["POST"])
+def settings_delete():
+    user, resp = _require_login()
+    if resp:
+        return resp
+
+    password = request.form.get("password", "")
+    if not bcrypt.checkpw(password.encode(), user["password"].encode()):
+        flash("Incorrect password — account not deleted.", "error")
+        return redirect(url_for("settings"))
+
+    if user["stripe_subscription_id"]:
+        try:
+            stripe.Subscription.cancel(user["stripe_subscription_id"])
+        except stripe.StripeError:
+            pass
+
+    with get_db() as db:
+        db.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+        db.commit()
+
+    session.clear()
+    return redirect(url_for("index"))
 
 
 # ── Stripe routes ─────────────────────────────────────────────────────────────

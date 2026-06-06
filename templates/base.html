@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Niche Finder{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #0f172a;
+      --purple: #2d1b69;
+      --mid:    #1e1b4b;
+      --accent: #6366f1;
+      --accent2:#818cf8;
+      --green:  #10b981;
+      --amber:  #f59e0b;
+      --glass:  rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.10);
+      --text:   #e2e8f0;
+      --muted:  #94a3b8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: "Inter", sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--navy) 0%, var(--mid) 55%, var(--purple) 100%);
+      color: var(--text);
+      padding-bottom: 5rem;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Sticky top nav ── */
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.88);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .nav-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .nav-brand-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .nav-brand-icon svg { width: 14px; height: 14px; }
+
+    .nav-brand-name {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.1rem;
+    }
+
+    .nav-links a {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-decoration: none;
+      padding: 0.4rem 0.7rem;
+      border-radius: 7px;
+      transition: color 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+
+    .nav-links a:hover { color: #e2e8f0; background: rgba(255,255,255,0.07); }
+    .nav-active { color: #e2e8f0 !important; background: rgba(255,255,255,0.09) !important; }
+
+    .nav-sep {
+      width: 1px;
+      height: 14px;
+      background: rgba(255,255,255,0.12);
+      margin: 0 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .nav-pill {
+      font-size: 0.67rem;
+      font-weight: 700;
+      padding: 0.18rem 0.5rem;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+      background: rgba(16,185,129,0.15);
+      color: #34d399;
+      border: 1px solid rgba(16,185,129,0.3);
+      flex-shrink: 0;
+    }
+
+    .nav-pill.free {
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      border-color: rgba(99,102,241,0.25);
+    }
+
+    .btn-upgrade-nav {
+      font-size: 0.8rem !important;
+      font-weight: 600 !important;
+      color: #fff !important;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+      border-radius: 7px !important;
+      padding: 0.38rem 0.8rem !important;
+      transition: opacity 0.15s !important;
+    }
+
+    .btn-upgrade-nav:hover {
+      opacity: 0.85;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+    }
+
+    /* ── Flash messages ── */
+    .flash-wrap {
+      position: relative;
+      z-index: 50;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0.85rem 1.5rem 0;
+    }
+
+    .flash {
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      animation: flashIn 0.25s ease;
+    }
+
+    @keyframes flashIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .flash-success {
+      background: rgba(16,185,129,0.12);
+      border: 1px solid rgba(16,185,129,0.3);
+      color: #6ee7b7;
+    }
+
+    .flash-error {
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: #fca5a5;
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <div class="nav-brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+          <polyline points="16 7 22 7 22 13"/>
+        </svg>
+      </div>
+      <span class="nav-brand-name">Niche Finder</span>
+    </a>
+
+    <div class="nav-links">
+      {% if current_user %}
+        <a href="/" class="{% if request.endpoint == 'index' %}nav-active{% endif %}">Home</a>
+        <a href="/account" class="{% if request.endpoint == 'account' %}nav-active{% endif %}">Account</a>
+        <a href="/settings" class="{% if request.endpoint == 'settings' %}nav-active{% endif %}">Settings</a>
+        <div class="nav-sep"></div>
+        <span class="nav-pill {{ current_user.plan }}">{{ current_user.plan | upper }}</span>
+        {% if current_user.plan != 'pro' %}
+          <a href="#" class="btn-upgrade-nav" onclick="event.preventDefault(); startCheckout()">Upgrade ✦</a>
+        {% endif %}
+        <a href="/logout">Sign out</a>
+      {% else %}
+        <a href="/" class="{% if request.endpoint == 'index' %}nav-active{% endif %}">Home</a>
+        <a href="/login" class="{% if request.endpoint == 'login' %}nav-active{% endif %}">Sign in</a>
+        <a href="/register" class="btn-upgrade-nav">Get started</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% if messages %}
+    <div class="flash-wrap">
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+{% block content %}{% endblock %}
+
+<script>
+  async function startCheckout() {
+    try {
+      const res  = await fetch("/create-checkout-session", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        if (typeof showError === "function") showError(data.error || "Could not start checkout.");
+        else alert(data.error || "Could not start checkout. Please try again.");
+      }
+    } catch {
+      if (typeof showError === "function") showError("Network error — could not start checkout.");
+      else alert("Network error — could not start checkout.");
+    }
+  }
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>
