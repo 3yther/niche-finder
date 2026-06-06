@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Niche Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #0f172a;
+      --purple: #2d1b69;
+      --mid:    #1e1b4b;
+      --accent: #6366f1;
+      --accent2:#818cf8;
+      --green:  #10b981;
+      --amber:  #f59e0b;
+      --glass:  rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.10);
+      --text:   #e2e8f0;
+      --muted:  #94a3b8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: "Inter", sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--navy) 0%, var(--mid) 55%, var(--purple) 100%);
+      color: var(--text);
+      padding-bottom: 5rem;
+    }
+
+    /* ── Noise texture overlay ── */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    main { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 0 1.25rem; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 4rem 0 2.5rem;
+    }
+
+    .logo-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 80px;
+      height: 80px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      margin-bottom: 1.5rem;
+      animation: logoGlow 3s ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(99,102,241,0.4);
+    }
+
+    @keyframes logoGlow {
+      0%, 100% { box-shadow: 0 0 20px 4px rgba(99,102,241,0.3); }
+      50%       { box-shadow: 0 0 40px 12px rgba(124,58,237,0.5); }
+    }
+
+    .logo-wrap svg { width: 40px; height: 40px; }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(90deg, #fff 30%, var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    .hero p {
+      margin-top: 0.65rem;
+      color: var(--muted);
+      font-size: 1.05rem;
+      font-weight: 400;
+    }
+
+    /* ── Search bar ── */
+    .search-wrap {
+      margin-top: 2.25rem;
+      display: flex;
+      gap: 0.6rem;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.4rem 0.4rem 0.4rem 1.25rem;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-wrap:focus-within {
+      border-color: rgba(99,102,241,0.6);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+
+    .search-wrap input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-family: "Inter", sans-serif;
+      font-size: 1rem;
+      min-width: 0;
+    }
+
+    .search-wrap input::placeholder { color: var(--muted); }
+
+    .search-wrap button {
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border: none;
+      border-radius: 999px;
+      padding: 0.7rem 1.6rem;
+      color: #fff;
+      font-family: "Inter", sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .search-wrap button:hover   { opacity: 0.9; transform: translateY(-1px); }
+    .search-wrap button:active  { transform: translateY(0); }
+    .search-wrap button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* ── Loading ── */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 2rem 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent2);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error ── */
+    #error-msg {
+      display: none;
+      margin-top: 1.25rem;
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 12px;
+      padding: 0.9rem 1.1rem;
+      color: #fca5a5;
+      font-size: 0.9rem;
+    }
+
+    /* ── Results ── */
+    #results { display: none; margin-top: 2rem; }
+
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.85rem;
+    }
+
+    /* ── Score cards ── */
+    .score-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .score-card {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      transition: transform 0.2s;
+    }
+
+    .score-card:hover { transform: translateY(-2px); }
+
+    .score-card.opportunity {
+      border-color: rgba(16,185,129,0.3);
+      animation: oppGlow 3s ease-in-out infinite;
+    }
+
+    @keyframes oppGlow {
+      0%, 100% { box-shadow: 0 0 12px 0 rgba(16,185,129,0.15); }
+      50%       { box-shadow: 0 0 28px 6px rgba(16,185,129,0.30); }
+    }
+
+    .card-icon {
+      font-size: 1.75rem;
+      line-height: 1;
+      margin-bottom: 0.6rem;
+    }
+
+    .card-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .card-value {
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.75rem;
+    }
+
+    .demand-card      .card-value { color: #60a5fa; }
+    .competition-card .card-value { color: #fbbf24; }
+    .opportunity-card .card-value { color: #34d399; }
+
+    .mini-bar-track {
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .mini-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      width: 0%;
+      transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .demand-card      .mini-bar-fill { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .competition-card .mini-bar-fill { background: linear-gradient(90deg, #d97706, #fbbf24); }
+    .opportunity-card .mini-bar-fill { background: linear-gradient(90deg, #059669, #34d399); }
+
+    /* ── Summary box ── */
+    .summary-box {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent2);
+      border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: #c7d2fe;
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.25rem;
+    }
+
+    /* ── Top videos ── */
+    .video-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .video-list li {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      font-size: 0.875rem;
+      color: var(--text);
+      backdrop-filter: blur(12px);
+    }
+
+    .video-list li::before {
+      content: "▶";
+      color: var(--accent2);
+      font-size: 0.65rem;
+      flex-shrink: 0;
+    }
+
+    /* ── How it works ── */
+    .how-section {
+      margin-top: 3rem;
+    }
+
+    .how-section h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 0.4rem;
+      color: #fff;
+    }
+
+    .how-section .sub {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .step {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem 1.1rem;
+      text-align: center;
+      backdrop-filter: blur(12px);
+    }
+
+    .step-icon {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .step-num {
+      display: inline-block;
+      background: rgba(99,102,241,0.2);
+      color: var(--accent2);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      margin-bottom: 0.6rem;
+    }
+
+    .step h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.35rem;
+    }
+
+    .step p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 520px) {
+      .score-cards { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .search-wrap { border-radius: 16px; flex-direction: column; padding: 0.75rem; }
+      .search-wrap button { border-radius: 10px; width: 100%; padding: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+<main>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="logo-wrap">
+      <!-- Chart / trending icon -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+        <polyline points="16 7 22 7 22 13"/>
+      </svg>
+    </div>
+
+    <h1>Niche Finder</h1>
+    <p>Discover your perfect YouTube niche in seconds</p>
+
+    <div class="search-wrap">
+      <input
+        type="text"
+        id="topic-input"
+        placeholder="Try: sourdough bread, budget travel, mechanical keyboards…"
+        autocomplete="off"
+      />
+      <button id="analyse-btn" onclick="runAnalysis()">Analyse →</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    Analysing topic — pulling live YouTube data…
+  </div>
+
+  <!-- Error -->
+  <div id="error-msg"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <p class="section-label">Scores</p>
+    <div class="score-cards">
+      <div class="score-card demand-card">
+        <div class="card-icon">🔥</div>
+        <div class="card-label">Demand</div>
+        <div class="card-value" id="demand-val">—</div>
+        <div class="mini-bar-track"><div class="mini-bar-fill" id="demand-bar"></div></div>
+      </div>
+
+      <div class="score-card competition-card">
+        <div class="card-icon">🛡️</div>
+        <div class="card-label">Competition ease</div>
+        <div class="card-value" id="competition-val">—</div>
+        <div class="mini-bar-track"><div class="mini-bar-fill" id="competition-bar"></div></div>
+      </div>
+
+      <div class="score-card opportunity-card">
+        <div class="card-icon">⚡</div>
+        <div class="card-label">Opportunity</div>
+        <div class="card-value" id="opportunity-val">—</div>
+        <div class="mini-bar-track"><div class="mini-bar-fill" id="opportunity-bar"></div></div>
+      </div>
+    </div>
+
+    <p class="section-label">Verdict</p>
+    <div class="summary-box" id="summary-text"></div>
+
+    <p class="section-label">Top videos on this topic</p>
+    <ul class="video-list" id="video-list"></ul>
+
+  </div>
+
+  <!-- How it works — always visible -->
+  <div class="how-section">
+    <h2>How it works</h2>
+    <p class="sub">Three steps from idea to insight</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🔍</div>
+        <div class="step-num">STEP 1</div>
+        <h3>Enter a topic</h3>
+        <p>Type any niche idea — broad or specific. No account needed.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">📊</div>
+        <div class="step-num">STEP 2</div>
+        <h3>We analyse YouTube</h3>
+        <p>We pull real data on view counts and channel sizes for the top 10 videos.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">🚀</div>
+        <div class="step-num">STEP 3</div>
+        <h3>Get your opportunity score</h3>
+        <p>See demand, competition ease, and a plain-English verdict in seconds.</p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const input   = document.getElementById("topic-input");
+  const btn     = document.getElementById("analyse-btn");
+  const loader  = document.getElementById("loading");
+  const errBox  = document.getElementById("error-msg");
+  const results = document.getElementById("results");
+
+  input.addEventListener("keydown", e => { if (e.key === "Enter") runAnalysis(); });
+
+  async function runAnalysis() {
+    const topic = input.value.trim();
+    if (!topic) { input.focus(); return; }
+
+    btn.disabled = true;
+    loader.style.display = "block";
+    errBox.style.display = "none";
+    results.style.display = "none";
+
+    try {
+      const res  = await fetch(`/analyse?topic=${encodeURIComponent(topic)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+
+      setScore("demand",      data.scores.demand);
+      setScore("competition", data.scores.competition);
+      setScore("opportunity", data.scores.opportunity);
+
+      document.getElementById("summary-text").textContent = data.summary;
+
+      const list = document.getElementById("video-list");
+      list.innerHTML = "";
+      data.top_videos.forEach(title => {
+        const li = document.createElement("li");
+        li.textContent = title;
+        list.appendChild(li);
+      });
+
+      results.style.display = "block";
+      results.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      showError("Network error — is the server running?");
+    } finally {
+      btn.disabled = false;
+      loader.style.display = "none";
+    }
+  }
+
+  function setScore(name, value) {
+    document.getElementById(`${name}-val`).textContent = value;
+    requestAnimationFrame(() => {
+      document.getElementById(`${name}-bar`).style.width = `${value}%`;
+    });
+  }
+
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.style.display = "block";
+  }
+</script>
+</body>
+</html>
