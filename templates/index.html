@@ -26,6 +26,87 @@
 
     html { scroll-behavior: smooth; }
 
+    /* ── Nav ── */
+    .nav {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 0;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+    }
+
+    .nav-brand-icon {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .nav-brand-icon svg { width: 15px; height: 15px; }
+
+    .nav-brand-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-links a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-decoration: none;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .nav-links a:hover { color: #fff; }
+
+    .nav-links a.btn-nav {
+      background: rgba(99,102,241,0.15);
+      border-color: rgba(99,102,241,0.35);
+      color: #a5b4fc;
+    }
+
+    .nav-links a.btn-nav:hover {
+      background: rgba(99,102,241,0.25);
+      color: #fff;
+    }
+
+    .nav-pill {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(16,185,129,0.15);
+      color: #34d399;
+      border: 1px solid rgba(16,185,129,0.3);
+      margin-left: 0.25rem;
+    }
+
+    .nav-pill.free {
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      border-color: rgba(99,102,241,0.25);
+    }
+
     body {
       font-family: "Inter", sans-serif;
       min-height: 100vh;
@@ -376,6 +457,32 @@
   </style>
 </head>
 <body>
+
+<nav class="nav">
+  <a href="/" class="nav-brand">
+    <div class="nav-brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+        <polyline points="16 7 22 7 22 13"/>
+      </svg>
+    </div>
+    <span class="nav-brand-name">Niche Finder</span>
+  </a>
+
+  <div class="nav-links">
+    {% if current_user %}
+      <span style="font-size:0.8rem;color:#64748b;">{{ current_user.email }}</span>
+      <span class="nav-pill {% if current_user.plan == 'pro' %}pro{% else %}free{% endif %}">
+        {{ current_user.plan | upper }}
+      </span>
+      <a href="/logout">Sign out</a>
+    {% else %}
+      <a href="/login">Sign in</a>
+      <a href="/register" class="btn-nav">Get started</a>
+    {% endif %}
+  </div>
+</nav>
+
 <main>
 
   <!-- Hero -->
@@ -497,7 +604,16 @@
       const data = await res.json();
 
       if (!res.ok) {
-        showError(data.error || "Something went wrong. Please try again.");
+        if (res.status === 403 && data.error === "guest_limit") {
+          showError(
+            "You've used your 3 free searches. ",
+            { text: "Create a free account to continue →", href: "/register" }
+          );
+        } else if (res.status === 403 && data.error === "upgrade to pro") {
+          showError("You've hit your 3 daily searches on the free plan. Upgrade to Pro for unlimited access.");
+        } else {
+          showError(data.error || "Something went wrong. Please try again.");
+        }
         return;
       }
 
@@ -532,8 +648,16 @@
     });
   }
 
-  function showError(msg) {
-    errBox.textContent = msg;
+  function showError(msg, link) {
+    errBox.innerHTML = "";
+    errBox.appendChild(document.createTextNode(msg));
+    if (link) {
+      const a = document.createElement("a");
+      a.href = link.href;
+      a.textContent = link.text;
+      a.style.cssText = "color:#818cf8;font-weight:600;text-decoration:none;";
+      errBox.appendChild(a);
+    }
     errBox.style.display = "block";
   }
 </script>
