@@ -107,6 +107,20 @@
       border-color: rgba(99,102,241,0.25);
     }
 
+    .btn-upgrade-nav {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border: none;
+      border-radius: 999px;
+      padding: 0.35rem 0.8rem;
+      cursor: pointer;
+      font-family: "Inter", sans-serif;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-upgrade-nav:hover { opacity: 0.85; transform: translateY(-1px); }
+
     body {
       font-family: "Inter", sans-serif;
       min-height: 100vh;
@@ -475,6 +489,9 @@
       <span class="nav-pill {% if current_user.plan == 'pro' %}pro{% else %}free{% endif %}">
         {{ current_user.plan | upper }}
       </span>
+      {% if current_user.plan != 'pro' %}
+        <button class="btn-upgrade-nav" onclick="startCheckout()">Upgrade ✦</button>
+      {% endif %}
       <a href="/logout">Sign out</a>
     {% else %}
       <a href="/login">Sign in</a>
@@ -600,8 +617,16 @@
     results.style.display = "none";
 
     try {
-      const res  = await fetch(`/analyse?topic=${encodeURIComponent(topic)}`);
-      const data = await res.json();
+      const res = await fetch(`/analyse?topic=${encodeURIComponent(topic)}`);
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        console.error("Non-JSON response from server:", res.status, parseErr);
+        showError(`Server error (${res.status}). Check the server logs.`);
+        return;
+      }
 
       if (!res.ok) {
         if (res.status === 403 && data.error === "guest_limit") {
@@ -610,7 +635,10 @@
             { text: "Create a free account to continue →", href: "/register" }
           );
         } else if (res.status === 403 && data.error === "upgrade to pro") {
-          showError("You've hit your 3 daily searches on the free plan. Upgrade to Pro for unlimited access.");
+          showError(
+            "You've hit your 3 daily searches on the free plan. ",
+            { text: "Upgrade to Pro →", onclick: startCheckout }
+          );
         } else {
           showError(data.error || "Something went wrong. Please try again.");
         }
@@ -648,17 +676,39 @@
     });
   }
 
-  function showError(msg, link) {
+  function showError(msg, action) {
     errBox.innerHTML = "";
     errBox.appendChild(document.createTextNode(msg));
-    if (link) {
-      const a = document.createElement("a");
-      a.href = link.href;
-      a.textContent = link.text;
-      a.style.cssText = "color:#818cf8;font-weight:600;text-decoration:none;";
-      errBox.appendChild(a);
+    if (action) {
+      if (action.onclick) {
+        const b = document.createElement("button");
+        b.textContent = action.text;
+        b.style.cssText = "background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:6px;padding:0.3rem 0.75rem;font-size:0.82rem;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;margin-left:0.5rem;vertical-align:middle;";
+        b.onclick = action.onclick;
+        errBox.appendChild(b);
+      } else {
+        const a = document.createElement("a");
+        a.href = action.href;
+        a.textContent = action.text;
+        a.style.cssText = "color:#818cf8;font-weight:600;text-decoration:none;";
+        errBox.appendChild(a);
+      }
     }
     errBox.style.display = "block";
+  }
+
+  async function startCheckout() {
+    try {
+      const res  = await fetch("/create-checkout-session", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        showError(data.error || "Could not start checkout. Please try again.");
+      }
+    } catch {
+      showError("Network error — could not start checkout.");
+    }
   }
 </script>
 </body>

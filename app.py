@@ -9,8 +9,15 @@ from flask import (Flask, jsonify, redirect, render_template,
                    request, session, url_for)
 from flask_session import Session
 from googleapiclient.discovery import build
+import stripe
 
 load_dotenv()
+
+STRIPE_SECRET_KEY      = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET  = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID        = os.getenv("STRIPE_PRICE_ID", "")
+stripe.api_key = STRIPE_SECRET_KEY
 
 app = Flask(__name__)
 app.config["SECRET_KEY"]      = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
@@ -51,6 +58,19 @@ def init_db():
 init_db()
 
 
+def migrate_db():
+    with get_db() as db:
+        for col_def in ("stripe_customer_id TEXT", "stripe_subscription_id TEXT"):
+            try:
+                db.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
+                db.commit()
+            except sqlite3.OperationalError:
+                pass
+
+
+migrate_db()
+
+
 def get_user_by_id(user_id):
     return get_db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
@@ -87,10 +107,11 @@ def increment_search_count(user_id):
 @app.context_processor
 def inject_user():
     user_id = session.get("user_id")
+    ctx = {"current_user": None, "stripe_publishable_key": STRIPE_PUBLISHABLE_KEY}
     if user_id:
         user = get_user_by_id(user_id)
-        return {"current_user": dict(user) if user else None}
-    return {"current_user": None}
+        ctx["current_user"] = dict(user) if user else None
+    return ctx
 
 
 # ── YouTube helpers ───────────────────────────────────────────────────────────
@@ -276,6 +297,103 @@ def analyse():
         "summary":    _summarise(opportunity),
         "top_videos": [v["title"] for v in videos[:3]],
     })
+
+
+# ── Stripe routes ─────────────────────────────────────────────────────────────
+
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to upgrade"}), 401
+
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user["plan"] == "pro":
+        return jsonify({"error": "Already on Pro plan"}), 400
+
+    try:
+        if user["stripe_customer_id"]:
+            customer_id = user["stripe_customer_id"]
+        else:
+            customer = stripe.Customer.create(email=user["email"])
+            customer_id = customer.id
+            with get_db() as db:
+                db.execute(
+                    "UPDATE users SET stripe_customer_id = ? WHERE id = ?",
+                    (customer_id, user_id),
+                )
+                db.commit()
+
+        stripe_session = stripe.checkout.Session.create(
+            customer=customer_id,
+            mode="subscription",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            success_url=url_for("success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("cancel", _external=True),
+        )
+        return jsonify({"url": stripe_session.url})
+    except stripe.StripeError as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/success")
+def success():
+    stripe_session_id = request.args.get("session_id", "")
+    upgraded = False
+
+    if stripe_session_id and session.get("user_id"):
+        try:
+            stripe_session = stripe.checkout.Session.retrieve(stripe_session_id)
+            if stripe_session.payment_status == "paid":
+                with get_db() as db:
+                    db.execute(
+                        "UPDATE users SET plan = 'pro', stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?",
+                        (stripe_session.customer, stripe_session.subscription, session.get("user_id")),
+                    )
+                    db.commit()
+                upgraded = True
+        except stripe.StripeError:
+            pass
+
+    return render_template("success.html", upgraded=upgraded)
+
+
+@app.route("/cancel")
+def cancel():
+    return redirect(url_for("index"))
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    payload    = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except Exception:
+        return "", 400
+
+    obj = event["data"]["object"]
+
+    if event["type"] == "checkout.session.completed" and obj.get("mode") == "subscription":
+        with get_db() as db:
+            db.execute(
+                "UPDATE users SET plan = 'pro', stripe_subscription_id = ? WHERE stripe_customer_id = ?",
+                (obj["subscription"], obj["customer"]),
+            )
+            db.commit()
+
+    elif event["type"] == "customer.subscription.deleted":
+        with get_db() as db:
+            db.execute(
+                "UPDATE users SET plan = 'free', stripe_subscription_id = NULL WHERE stripe_customer_id = ?",
+                (obj["customer"],),
+            )
+            db.commit()
+
+    return "", 200
 
 
 if __name__ == "__main__":
